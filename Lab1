@@ -1,3 +1,4 @@
+# Example 1
 install.packages("MASS")
 library(MASS)
 attach(Boston)
@@ -11,6 +12,7 @@ ncol(Boston)
 summary(Boston)
 summary(Boston$crim)
 
+#Example 2
 install.packages("ISLR")
 library(ISLR)
 data(Auto)
@@ -28,6 +30,7 @@ boxplot(Auto$weight)
 mean(Auto$weight)
 median((Auto$weight))
 
+#Practice - Explore the EPI dataset
 data1 <- read.csv(file.choose(), header=T, skip=1)
 dim(data1)
 names(data1)
