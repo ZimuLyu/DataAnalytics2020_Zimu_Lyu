@@ -78,6 +78,3 @@ ggplot(ToothGrowth, aes(supp, len, color = factor(dose))) +
   geom_boxplot()
 ggplot(ToothGrowth, aes(factor(dose), len, color = supp)) +
   geom_boxplot()
-
-install.packages("gcookbook")
-library(gcookbook)
