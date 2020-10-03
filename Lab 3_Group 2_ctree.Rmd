@@ -1,0 +1,76 @@
+---
+title: "ctree1"
+output: html_document
+---
+```{r warning=FALSE, message=FALSE}
+require(rpart)
+require(party)
+library(rpart.plot)
+```
+
+#swiss
+```{r}
+#regression tree
+swiss
+swiss_rpart <- rpart(Fertility ~ Agriculture + Education + Catholic, data = swiss)
+plot(swiss_rpart) # try some different plot options
+text(swiss_rpart) # try some different text options
+rpart.plot(swiss_rpart, digits = 4) # It's much prettier.
+```
+
+```{r}
+# conditional inference trees
+treeFert<-ctree(Fertility ~ Agriculture + Education + Catholic, data = swiss)
+# look at help info, vary parameters.
+help("ctree")
+plot(treeFert)
+
+# random forest using conditional inference trees
+cforest(Fertility ~ Agriculture + Education + Catholic, data = swiss, controls=cforest_control(mtry=2, mincriterion=0))
+```
+
+#iris
+```{r}
+# conditional inference trees
+treeSwiss<-ctree(Species ~ ., data=iris)
+plot(treeSwiss) # similar to C5.0
+```
+
+```{r}
+# random forest using conditional inference trees
+cforest(Species ~ ., data=iris, controls=cforest_control(mtry=2, mincriterion=0))
+help("cforest")
+```
+
+```{r}
+# fit a classification or regression tree
+library(tree)
+tr <- tree(Species ~ ., data=iris)
+tr
+tr$frame
+plot(tr)
+text(tr)
+#find "prettier" ways to plot the tree
+help("tree")
+```
+
+#cu.summary
+```{r}
+# Conditional Inference Tree for Mileage
+cu.summary
+fit2M <- ctree(Mileage~Price + Country + Reliability + Type, data=na.omit(cu.summary))
+summary(fit2M)
+# plot tree
+plot(fit2M, uniform=TRUE, main="CI Tree Tree for Mileage")
+text(fit2M, use.n=TRUE, all=TRUE, cex=.8) # error
+help("text")
+```
+
+#kyphosis
+```{r}
+kyphosis
+fitK <- ctree(Kyphosis ~ Age + Number + Start, data=kyphosis)
+#different plot types
+plot(fitK, main="Conditional Inference Tree for Kyphosis")
+plot(fitK, main="Conditional Inference Tree for Kyphosis",type="simple")
+```
