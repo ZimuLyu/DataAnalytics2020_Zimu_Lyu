@@ -176,7 +176,7 @@ testing <- setdiff(1:nnyt1,training)
 test <- subset(nyt1[testing,],select = c(Age,Impressions))
 
 # dependent variable
-cg<-nyt1$Gender[training]
+cg <- nyt1$Gender[training]
 true.labels <- nyt1$Gender[testing]
 
 library(class)
