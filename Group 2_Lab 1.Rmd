@@ -5,19 +5,14 @@ date: "10/9/2020"
 output: html_document
 ---
 
-#bronx1 and bronx2, can't find this "perl.exe" dataset in the website.
-
 ```{r}
 
-library(gdata) 
-bronx1 <- read.xls(file.choose(),pattern="BOROUGH",stringsAsFactors=FALSE,sheet=1,perl="<SOMEWHERE>/perl/bin/perl.exe") 
-bronx1 <- bronx1[which(bronx1$GROSS.SQUARE.FEET!="0" & bronx1$LAND.SQUARE.FEET!="0" & bronx1$SALE.PRICE!="$0"),]
-
-#alternate
+library(gdata)
 library("xlsx", lib.loc="/Library/Frameworks/R.framework/Versions/3.0/Resources/library")
 bronx1 <- read.xlsx("<SOMEWHERE>/rollingsales_bronx.xls",pattern="BOROUGH",stringsAsFactors=FALSE,sheetIndex=1,startRow=5,header=TRUE)
 View(bronx1)
 attach(bronx1) 
+
 SALE.PRICE <- sub("\\$","",SALE.PRICE) 
 SALE.PRICE <- as.numeric(gsub(",","", SALE.PRICE)) 
 GROSS.SQUARE.FEET <- as.numeric(gsub(",","", GROSS.SQUARE.FEET)) 
