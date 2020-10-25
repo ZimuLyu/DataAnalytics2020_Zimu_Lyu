@@ -1,0 +1,176 @@
+---
+title: "Untitled"
+author: "Zimu Lyu"
+output: html_document
+---
+
+# nbayes
+
+```{r}
+library("e1071")
+require(mlbench)
+data(HouseVotes84)
+model <- naiveBayes(Class ~ ., data = HouseVotes84)
+predict(model, HouseVotes84[1:10,-1])
+predict(model, HouseVotes84[1:10,-1], type = "raw")
+
+pred <- predict(model, HouseVotes84[,-1])
+table(pred, HouseVotes84$Class)
+```
+
+```{r}
+## A contingency table:
+data(Titanic)
+m <- naiveBayes(Survived ~ ., data = Titanic)
+m
+predict(m, as.data.frame(Titanic)[,1:3])
+```
+
+```{r}
+## Metric predictors
+data(iris)
+m <- naiveBayes(Species ~ ., data = iris)
+m
+m <- naiveBayes(iris[,-5], iris[,5])
+m
+table(predict(m, iris[,-5]), iris[,5])
+```
+
+```{r}
+library(klaR)
+model <- NaiveBayes(Class ~ ., data = HouseVotes84)
+predict(model, HouseVotes84[1:10,-1])
+pred <- predict(model, HouseVotes84[,-1])
+table(pred$class, HouseVotes84$Class)
+```
+
+# kknn
+
+```{r}
+require(kknn)
+data(iris)
+m <- dim(iris)[1]
+m
+val <- sample(1:m, size = round(m/3), replace = FALSE, prob = rep(1/m, m)) 
+iris.learn <- iris[-val,] 	# training set
+iris.valid <- iris[val,]	# test set
+
+iris.kknn <- train.kknn(Species~., iris.learn, distance = 1, kernel = c("triangular", "epanechnikov", "biweight", "triweight", "cos", "inv", "gaussian", "rank", "optimal") )
+summary(iris.kknn)
+table(predict(iris.kknn,iris.valid),iris.valid$Species)
+
+head(iris.kknn$fitted.values)
+```
+
+# randomforest
+
+```{r}
+require(randomForest)
+library(rpart)
+data(kyphosis)
+fitKF <- randomForest(Kyphosis ~ Age + Number + Start, data = kyphosis)
+print(fitKF)
+importance(fitKF)
+
+fitSwiss <- randomForest(Fertility ~ Agriculture + Education + Catholic, data = swiss)
+print(fitSwiss)
+importance(fitSwiss)
+varImpPlot(fitSwiss)
+plot(fitSwiss)
+getTree(fitSwiss,1, labelVar=TRUE)
+
+help(randomForest) 
+help(rfcv) # random forest cross-validation
+
+data(imports85)
+
+```
+# rpart
+
+```{r}
+require(rpart)
+library(rpart.plot)
+swiss_rpart <- rpart(Fertility ~ Agriculture + Education + Catholic, data = swiss)
+plot(swiss_rpart)
+text(swiss_rpart)
+rpart.plot(swiss_rpart, digits = 4)
+```
+
+```{r}
+require(rpart)
+fitM <- rpart(Mileage~Price + Country + Reliability + Type, method="anova", data=cu.summary)
+fitM
+
+printcp(fitM)
+plotcp(fitM)
+summary(fitM)
+
+par(mfrow=c(1,2)) 
+rsq.rpart(fitM) # visualize cross-validation results
+dev.off()
+
+# plot the tree
+plot(fitM, uniform=TRUE, main="Regression Tree for Mileage ")
+text(fitM, use.n=TRUE, all=TRUE, cex=.8)
+
+# prune the tree
+pfitM <- prune(fitM, cp=0.011604)
+plot(pfitM, uniform=TRUE, main="Pruned Regression Tree for Mileage")
+text(pfitM, use.n=TRUE, all=TRUE, cex=.8)
+post(pfitM, file = "ctree2.ps", title = "Pruned Regression Tree for Mileage")
+
+pfitM <- prune(fitM, cp=0.025441)
+plot(pfitM, uniform=TRUE, main="Pruned Regression Tree for Mileage")
+text(pfitM, use.n=TRUE, all=TRUE, cex=.8)
+post(pfitM, file = "ctree2.ps", title = "Pruned Regression Tree for Mileage")
+
+pfitM <- prune(fitM, cp=0.010000)
+plot(pfitM, uniform=TRUE, main="Pruned Regression Tree for Mileage")
+text(pfitM, use.n=TRUE, all=TRUE, cex=.8)
+post(pfitM, file = "ctree2.ps", title = "Pruned Regression Tree for Mileage")
+
+# cp becomes larger, leaves become less.
+```
+
+```{r}
+data(Glass, package="mlbench")
+index <- 1:nrow(Glass)
+testindex <- sample(index, trunc(length(index)/3))
+testset <- Glass[testindex,]
+trainset <- Glass[-testindex,]
+
+rpart.model <- rpart(Type ~ ., data = trainset)
+rpart.pred <- predict(rpart.model, testset[,-10], type = "class")
+printcp(rpart.model)
+plotcp(rpart.model)
+
+par(mfrow=c(1,2)) 
+rsq.rpart(rpart.model)
+dev.off()
+
+print(rpart.model)
+
+rpart.plot(rpart.model, type=3)
+plot(rpart.model, compress=TRUE)
+text(rpart.model, use.n=TRUE)
+plot(rpart.pred)
+```
+
+```{r}
+fitK <- rpart(Kyphosis ~ Age + Number + Start, method="class", data=kyphosis)
+printcp(fitK)
+plotcp(fitK) 
+summary(fitK) 
+
+plot(fitK, uniform=TRUE, main="Classification Tree for Kyphosis")
+text(fitK, use.n=TRUE, all=TRUE, cex=.8)
+# create attractive postscript plot of tree
+post(fitK, file = "hyphosistree.ps", title = "Classification Tree for Kyphosis") 
+   
+# prune the tree
+pfitK <- prune(fitK, cp=0.019608)
+plot(pfitK, uniform=TRUE, main="Pruned Classification Tree for Kyphosis")
+text(pfitK, use.n=TRUE, all=TRUE, cex=.8)
+post(pfitK, file = "ctree.ps", title = "Pruned Classification Tree for Kyphosis")
+```
+
