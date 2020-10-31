@@ -1,0 +1,228 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(e1071)
+library(rpart)
+library(rpart.plot)
+library(party)
+library(tree)
+library(randomForest)
+library(titanic)
+```
+
+# rpart1
+
+```{r}
+swiss_rpart <- rpart(Fertility ~ Agriculture + Education + Catholic, data = swiss)
+plot(swiss_rpart) 
+text(swiss_rpart) 
+rpart.plot(swiss_rpart, digits = 4)
+rpart.plot(swiss_rpart, type = 3, digits = 4)
+```
+
+# rpart2
+
+```{r}
+fitM <- rpart(Mileage~Price + Country + Reliability + Type, method="anova", data=cu.summary)
+
+# find proper cp value
+printcp(fitM)
+plotcp(fitM)
+summary(fitM)
+par(mfrow=c(1,2)) 
+rsq.rpart(fitM) 
+```
+
+```{r}
+# original
+plot(fitM, uniform=TRUE, main="Regression Tree for Mileage ")
+text(fitM, use.n=TRUE, all=TRUE, cex=.8)
+
+# pruned
+pfitM<- prune(fitM, cp=0.025441)
+plot(pfitM, uniform=TRUE, main="Pruned Regression Tree for Mileage")
+text(pfitM, use.n=TRUE, all=TRUE, cex=.8)
+```
+
+# rpart3
+
+```{r}
+data(Glass, package="mlbench")
+
+index <- 1:nrow(Glass)
+testindex <- sample(index, trunc(length(index)/3))
+testset <- Glass[testindex,]
+trainset <- Glass[-testindex,]
+
+rpart.model <- rpart(Type ~ ., data = trainset)
+rpart.pred <- predict(rpart.model, testset[,-10], type = "class")
+printcp(rpart.model)
+plotcp(rpart.model)
+```
+
+```{r}
+par(mfrow=c(1,2))
+rsq.rpart(rpart.model)
+print(rpart.model)
+```
+
+```{r}
+plot(rpart.model,compress=TRUE)
+text(rpart.model, use.n=TRUE)
+plot(rpart.pred)
+
+prpart.model<- prune(rpart.model, cp=0.022472)
+plot(prpart.model,compress=TRUE)
+text(prpart.model, use.n=TRUE)
+```
+```{r}
+fitK <- rpart(Kyphosis ~ Age + Number + Start, method="class", data=kyphosis)
+printcp(fitK) 
+plotcp(fitK)
+```
+
+```{r}
+plot(fitK, uniform=TRUE, main="Classification Tree for Kyphosis")
+text(fitK, use.n=TRUE, all=TRUE, cex=.8)
+```
+
+```{r}
+pfitK<- prune(fitK, cp= fitK$cptable[which.min(fitK$cptable[,"xerror"]),"CP"])
+plot(pfitK, uniform=TRUE, main="Pruned Classification Tree for Kyphosis")
+text(pfitK, use.n=TRUE, all=TRUE, cex=.8)
+# Error: fit is not a tree, just a root
+# When xerror is min, nsplit=0.
+```
+
+# ctree1
+
+```{r}
+# conditional inference trees
+treeSwiss <- ctree(Species ~ ., data=iris)
+plot(treeSwiss)
+```
+
+```{r}
+treeFert <- ctree(Fertility ~ Agriculture + Education + Catholic, data = swiss)
+plot(treeFert)
+
+cforest(Fertility ~ Agriculture + Education + Catholic, data = swiss, controls=cforest_control(mtry=2, mincriterion=0))
+```
+
+```{r}
+tr <- tree(Species ~ ., data=iris)
+tr
+tr$frame
+plot(tr)
+text(tr)
+```
+
+```{r}
+cforest(Species ~ ., data=iris, controls=cforest_control(mtry=2, mincriterion=0))
+```
+
+# ctree2
+
+```{r}
+fit2M <- ctree(Mileage~Price + Country + Reliability + Type, data=na.omit(cu.summary))
+summary(fit2M)
+
+plot(fit2M, uniform=TRUE, main="CI Tree Tree for Mileage ")
+text(fit2M, use.n=TRUE, all=TRUE, cex=.8)
+```
+
+# ctree3
+
+```{r}
+fitK <- ctree(Kyphosis ~ Age + Number + Start, data=kyphosis)
+plot(fitK, main="Conditional Inference Tree for Kyphosis")
+plot(fitK, main="Conditional Inference Tree for Kyphosis",type="simple")
+```
+
+# randomforest1
+
+```{r}
+# data on children who have had corrective spinal surgery
+fitKF <- randomForest(Kyphosis ~ Age + Number + Start, data=kyphosis)
+print(fitKF) 
+importance(fitKF) # importance of each predictor
+```
+
+```{r}
+fitSwiss <- randomForest(Fertility ~ Agriculture + Education + Catholic, data = swiss)
+
+print(fitSwiss) 
+importance(fitSwiss) 
+varImpPlot(fitSwiss)
+
+plot(fitSwiss) # more trees, less error
+
+getTree(fitSwiss, 1, labelVar=TRUE)
+```
+
+```{r}
+help(randomForest)
+help(rfcv)
+help("imports85")
+```
+
+# randomforest for imports85
+
+```{r}
+data(imports85)
+
+imp85 <- imports85[,-2]  # drop normalizedLosses(too many NAs)
+imp85 <- imp85[complete.cases(imp85), ]
+
+# drop empty levels for factors.
+imp85[] <- lapply(imp85, function(x) if (is.factor(x)) x[, drop=TRUE] else x)
+
+price.rf <- randomForest(price ~ ., imp85, do.trace=10, ntree=100)
+print(price.rf)
+plot(price.rf)
+
+numDoors.rf <- randomForest(numOfDoors ~ ., imp85, do.trace=10, ntree=100)
+print(numDoors.rf)
+plot(numDoors.rf)
+```
+
+# rpart for “Rings” on the Abalone dataset
+
+```{r}
+abalone <- read.csv(file.choose(), header = FALSE)
+names(abalone) <- c('Sex', 'Length', 'Diameter', 'Height', 'Whole weight', 'Shucked weight', 'Viscera weight', 'Shell weight', 'Rings')
+```
+
+```{r}
+aba_rpart <- rpart(Rings ~ ., data = abalone)
+
+printcp(aba_rpart)
+plotcp(aba_rpart)
+```
+```{r}
+rpart.plot(aba_rpart) # default nsplit=8
+
+aba_rpartp <- prune(aba_rpart, cp=0.012458)
+rpart.plot(aba_rpartp)
+```
+
+# trees for titanic
+
+```{r}
+titanic_rpart <- rpart(Survived ~ Pclass + Sex + Age, data = titanic_train[!is.na(titanic_train$Age),])
+rpart.plot(titanic_rpart)
+
+
+titanic_ctree <- ctree(Survived ~ Pclass + Sex + Age, data = titanic_train[!is.na(titanic_train$Age),])
+plot(titanic_ctree)
+
+titanic_forest <- randomForest(Survived ~ Pclass + Sex + Age, data = titanic_train[!is.na(titanic_train$Age),])
+print(titanic_forest) 
+importance(titanic_forest) 
+varImpPlot(titanic_forest)
+plot(titanic_forest) 
+```
+
