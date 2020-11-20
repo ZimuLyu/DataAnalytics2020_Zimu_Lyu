@@ -1,0 +1,104 @@
+---
+title: "PCA"
+author: "Zimu Lyu"
+output: html_document
+---
+
+# USArrests
+
+```{r}
+data("USArrests")
+states <- row.names(USArrests) 
+states
+names(USArrests)
+```
+
+```{r}
+apply(USArrests, 2, mean) # 2=columns
+apply(USArrests, 2, var)
+```
+
+```{r}
+pr.out <- prcomp(USArrests, scale = TRUE) 
+# default: center = TRUE, center the variables to have mean zero
+# scale the variables to have standard deviation one
+names(pr.out)
+
+pr.out$center
+pr.out$scale
+
+pr.out$rotation # principal component loadings
+```
+
+```{r}
+# Using the prcomp() function, we do not need to explicitly multiply the data by 
+# the principal component loading vectors in order to obtain the principal component score vectors.
+# Rather the 50 × 4 matrix x has as its columns the principal component score vectors. 
+# That is, the kth column is the kth principal component score vector.
+dim(pr.out$x)
+
+biplot(pr.out, scale = 0) # arrows are scaled to represent the loadings
+
+pr.out$sdev # standard deviations 
+```
+
+```{r}
+# The variance explained by each principal component
+pr.var <- pr.out$sdev^2
+pr.var
+
+# The propotion of variance explained by each principal component
+pve <- pr.var/sum(pr.var)
+pve
+```
+
+
+# Iris
+
+```{r}
+data("iris")
+head(iris)
+irisdata1 <- iris[,1:4]
+head(irisdata1)
+```
+
+```{r}
+principal_components <- princomp(irisdata1, cor = TRUE, score = TRUE) 
+# cor = TRUE, use the correlation matrix; cor = FALSE, use the covariance matrix
+# score = TRUE, the score on each principal component should be calculated
+
+summary(principal_components)
+```
+
+```{r}
+plot(principal_components)
+plot(principal_components, type = "l") # use a line
+biplot(principal_components)
+```
+```{r}
+help("prcomp")
+help("princomp")
+help("biplot")
+```
+
+```{r}
+data(Boston, package="MASS")
+help(Boston)
+pca_out <- prcomp(Boston,scale. = T)
+pca_out
+```
+
+```{r}
+plot(pca_out)
+```
+
+```{r}
+biplot(pca_out, scale = 0)
+boston_pc <- pca_out$x
+head(boston_pc)
+```
+
+```{r}
+summary(boston_pc)
+```
+
