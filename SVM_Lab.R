@@ -319,3 +319,37 @@ plot(x, y, type="l")
 lines(x, predict(regm,x), col="red")
 
 # SVM 10 and 11 are included in SVM 9
+
+# SVM 12 - use ksvm()
+
+library(kernlab)
+svp <- ksvm(xtrain,ytrain,type="C-svc",kernel='vanilladot',C=100,scaled=c())
+svp
+attributes(svp)
+alpha(svp)
+alphaindex(svp)
+b(svp)
+plot(svp,data=xtrain)
+
+# SVM 13
+
+svp <- ksvm(x,y,type="C-svc",kernel="vanilladot",C=1,scaled=c(),cross=5) # 5-fold cross-validation
+print(cross(svp))
+
+# SVM_rpart1
+
+data(Glass, package="mlbench")
+index <- 1:nrow(Glass)
+testindex <- sample(index, trunc(length(index)/3))
+testset <- Glass[testindex,]
+trainset <- Glass[-testindex,]
+
+## use SVM model
+svm.model <- svm(Type ~ ., data = trainset, cost = 100, gamma = 1)
+svm.pred <- predict(svm.model, testset[,-10])
+table(pred = svm.pred, true = testset[,10])
+
+## use decision tree model
+rpart.model <- rpart(Type ~ ., data = trainset)
+rpart.pred <- predict(rpart.model, testset[,-10], type = "class")
+table(pred = rpart.pred, true = testset[,10]) # different from the prediction of svm model
