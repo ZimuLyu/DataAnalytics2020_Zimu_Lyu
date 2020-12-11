@@ -1,0 +1,1041 @@
+---
+title: "Term Project"
+author: "Zimu Lyu, 6000-level"
+output: html_document
+---
+
+# Import Data
+
+```{r, message=FALSE, error=FALSE}
+library(tidyverse)
+library(zoo) # transform date format
+library(lubridate) # extract date feature
+library(fastDummies) # for one-hot encoding
+library(ggpubr) # multigraph
+library(DMwR) # handle unbalanced sample
+library(caret) # calculate correlation coefficient
+library(corrplot) # visualize correlation matrix
+library(caTools) # split data
+library(rpart) # decision tree
+library(rpart.plot) # visualize tree
+library(party) # decision tree
+library(randomForest) # random forest
+library(car) # calculate vif
+library(rawKS) # calculate ks
+library(e1071) # svm model
+```
+
+```{r, warning=FALSE, message=FALSE}
+
+setwd("/Users/cleardog/BA/MGMT 6962 Data Analytics/Project/Data/")
+
+# import origination data
+origclass <- c(
+'integer','integer','character','integer','character','real', 'integer','character','real',
+'integer','integer','integer','real','character','character','character','character', 'character',
+'character','character','character','integer','integer','character','character','character', 'character')
+orignames <- c(
+'fico','dt_first_pi','flag_fthb','dt_matr','cd_msa','mi_pct','cnt_units','occpy_sts','cltv','dti',
+'orig_upb','ltv','int_rt','channel','ppmt_pnlty','prod_type','st','prop_type','zipcode','id_loan',
+'loan_purpose','orig_loan_term','cnt_borr','seller_name','servicer_name','flag_sc', 'program_ind'
+)
+
+q1_2018_orig <- list.files(path=getwd(), pattern=c("historical_data1_Q12018",".txt"), full.names=F)
+q2_2018_orig <- list.files(path=getwd(), pattern=c("historical_data1_Q22018",".txt"), full.names=F)
+q3_2018_orig <- list.files(path=getwd(), pattern=c("historical_data1_Q32018",".txt"), full.names=F)
+q4_2018_orig <- list.files(path=getwd(), pattern=c("historical_data1_Q42018",".txt"), full.names=F)
+
+readfile_orig <- function(filenm){read.table(filenm,sep="|", header=FALSE, colClasses=origclass)}
+q1_2018_orig <- do.call("rbind", lapply(q1_2018_orig,readfile_orig))
+q2_2018_orig <- do.call("rbind", lapply(q2_2018_orig,readfile_orig))
+q3_2018_orig <- do.call("rbind", lapply(q3_2018_orig,readfile_orig))
+q4_2018_orig <- do.call("rbind", lapply(q4_2018_orig,readfile_orig))
+
+names(q1_2018_orig) <- orignames
+names(q2_2018_orig) <- orignames
+names(q3_2018_orig) <- orignames
+names(q4_2018_orig) <- orignames
+
+# import performance data
+svcgclass <- c(
+'character','integer','real','character','integer','integer','character','character','character',
+'integer','real','real','integer','integer','character','integer','integer','integer','integer',
+'integer','integer','real','real','character','character','real','real','real', 'character', 'character')
+svcgnames <- c(
+'id_loan','svcg_cycle','current_upb','delq_sts','loan_age','mths_remng','repch_flag','flag_mod','cd_zero_bal',
+'dt_zero_bal','current_int_rt','non_int_brng_upb','dt_lst_pi','mi_recoveries','net_sale_proceeds',
+'non_mi_recoveries','expenses','legal_costs','maint_pres_costs','taxes_ins_costs','misc_costs','actual_loss',
+'modcost','stepmod_ind','dpm_ind','eltv','zb_removal_upb','dlq_acrd_int',
+'disaster_hardship_ind','borrower_assist_flag')
+
+q1_2018_svcg <- list.files(path=getwd(), pattern=c("historical_data1_time_Q12018",".txt"), full.names=F)
+q2_2018_svcg <- list.files(path=getwd(), pattern=c("historical_data1_time_Q22018",".txt"), full.names=F)
+q3_2018_svcg <- list.files(path=getwd(), pattern=c("historical_data1_time_Q32018",".txt"), full.names=F)
+q4_2018_svcg <- list.files(path=getwd(), pattern=c("historical_data1_time_Q42018",".txt"), full.names=F)
+
+readfile_svcg <- function(filenm){read.table(filenm,sep="|", header=FALSE, colClasses=svcgclass)}
+q1_2018_svcg <- do.call("rbind", lapply(q1_2018_svcg,readfile_svcg))
+q2_2018_svcg <- do.call("rbind", lapply(q2_2018_svcg,readfile_svcg))
+q3_2018_svcg <- do.call("rbind", lapply(q3_2018_svcg,readfile_svcg))
+q4_2018_svcg <- do.call("rbind", lapply(q4_2018_svcg,readfile_svcg))
+
+names(q1_2018_svcg) <- svcgnames
+names(q2_2018_svcg) <- svcgnames
+names(q3_2018_svcg) <- svcgnames
+names(q4_2018_svcg) <- svcgnames
+
+```
+
+```{r}
+orig <- rbind(q1_2018_orig, q2_2018_orig, q3_2018_orig, q4_2018_orig)
+svcg <- rbind(q1_2018_svcg, q2_2018_svcg, q3_2018_svcg, q4_2018_svcg)
+delq <- svcg[, which(colnames(svcg) %in% c('id_loan','delq_sts'))]
+```
+
+Because we need this model to predict the probability of delinquency based on original information, 
+so variables in the performance file other than the delinquency status are not used.
+
+```{r}
+rm(q1_2018_orig)
+rm(q2_2018_orig)
+rm(q3_2018_orig)
+rm(q4_2018_orig)
+rm(q1_2018_svcg)
+rm(q2_2018_svcg)
+rm(q3_2018_svcg)
+rm(q4_2018_svcg)
+rm(svcg)
+```
+
+```{r}
+# merge data
+set.seed(100)
+loans <- orig %>%
+  left_join(delq, by = "id_loan") %>%
+  sample_frac(0.01, replace = FALSE)
+```
+
+# Data Orverview
+
+Filter single family loans with 30-year fixed term.
+
+```{r}
+loans <- filter(loans, orig_loan_term==360 & prop_type=='SF' & prod_type=='FRM')
+loans <- loans[,!colnames(loans) %in% c("orig_loan_term","prop_type", "prod_type")]
+```
+
+```{r}
+head(loans)
+str(loans)
+```
+
+```{r}
+# transform integer format to date format
+loans$dt_first_pi <- as.Date(as.yearmon(as.character(loans$dt_first_pi), "%Y%m"))
+loans$dt_matr <- as.Date(as.yearmon(as.character(loans$dt_matr), "%Y%m"))
+```
+
+```{r}
+summary(loans)
+```
+
+Many variables have outliers.
+
+```{r}
+check_na <- as.data.frame(sapply(loans, function(x) sum(is.na(x))))
+colnames(check_na) <- c("count")
+arrange(check_na, desc(check_na$count))
+```
+
+No missing value. 
+
+```{r error=FALSE, message=FALSE, warning=FALSE}
+loans_bydate <- loans %>%
+    group_by(dt_first_pi) %>%
+    count() 
+ggplot(loans_bydate, aes(dt_first_pi, n)) + 
+  geom_histogram(stat = 'identity') +
+  labs(x = 'First payment date', y = 'count')
+```
+Most of the data comes from March 2018 to February 2019.     
+
+```{r}
+loans <- filter(loans, dt_first_pi>='2018-03-01', dt_first_pi<'2019-03-01')
+```
+
+# EDA
+
+Let's first look at the target variable.
+
+## Target variable - Current loan delinquency status
+
+The 90–day delinquency rate is a measure of serious delinquencies. 
+It captures borrowers that have missed three or more payments.
+
+Definition from: 
+https://www.consumerfinance.gov/data-research/mortgage-performance-trends/mortgages-90-or-more-days-delinquent/
+
+```{r}
+table(loans$delq_sts)
+```
+
+```{r}
+# Delete "R", don't discuss this specific case
+loans <- loans[loans$delq_sts!='R',]
+# Create a delinquency flag, >3 means >=90
+loans$delq <- as.numeric(as.numeric(loans$delq_sts) > 2)
+```
+
+Look at delinquency by date features.
+
+```{r, message=FALSE}
+monthly_delq <- loans %>%
+  group_by(dt_first_pi) %>%
+  summarise(count=n(), avgdelq=mean(delq))
+monthly_delq
+
+ggplot(monthly_delq, aes(dt_first_pi, avgdelq)) +
+  geom_line() +
+  labs(x='First Payment Date', y='The Ratio of Delinquency')
+```
+
+EDA for some important numeric variables.
+
+## Credit Score(FICO)
+
+```{r}
+summary(loans$fico)
+# 9999 = Not Available, if Credit Score is < 301 or > 850.
+sum(loans$fico==9999)
+# Only a few hundred rows columns, so delete them.
+loans <- loans[!loans$fico==9999,]
+summary(loans$fico)
+```
+
+```{r, message=FALSE}
+loans %>%
+  group_by(dt_first_pi) %>%
+  summarise(count=n(), avgfico=mean(fico))
+
+loans %>%
+  group_by(dt_first_pi) %>%
+  summarise(count=n(), avgfico=mean(fico)) %>%
+  ggplot() +
+  geom_line(aes(dt_first_pi, avgfico)) +
+  labs(x='First Payment Date', y='Mean Credit Score')
+```
+Relationship with delinquency
+
+```{r}
+delq_fico <- loans %>% select(delq_sts, fico) %>% mutate(delq_sts=as.integer(delq_sts))
+qplot(factor(delq_sts), fico, data=delq_fico, geom='boxplot') + labs(x='Delinquency Status', y='FICO')
+```
+
+## Mortgage insurance percentage(MI%)
+
+```{r}
+summary(loans$mi_pct)
+table(factor(loans$mi_pct))
+mean(loans$mi_pct==0) # 0 = no MI, 66% of the value is zero
+loans <- loans[!loans$mi_pct==999,] # 999 = not available(<1 or >55), delete them
+```
+
+```{r, message=FALSE}
+mi_delq <- loans %>%
+  mutate(mi_pct=factor(mi_pct)) %>%
+  group_by(mi_pct) %>%
+  summarise(delq_pct = mean(delq))
+mi_delq
+
+have_mi_delq <- loans %>%
+  mutate(mi=as.integer(mi_pct==0)) %>%
+  group_by(mi) %>%
+  summarise(delq_pct = mean(delq))
+have_mi_delq
+```
+
+```{r}
+mi1 <- qplot(loans$mi_pct, binwidth=1, xlab = 'Distribution of MI%', ylab = 'Count')
+mi2 <- ggplot(mi_delq, aes(mi_pct, delq_pct)) + 
+  geom_bar(stat = "identity") +
+  labs(x = 'MI%', y = 'Delinquency Ratio')
+mi3 <- ggplot(have_mi_delq, aes(factor(mi), delq_pct)) + geom_bar(stat = "identity") + 
+  labs(x = 'MI%', y = 'Delinquency Ratio')
+
+ggarrange(mi1, mi2, mi3, ncol = 3, nrow = 2, widths = c(2,3,2)) 
+```
+
+## Original combined loan-to-value(CLTV)
+
+```{r}
+summary(loans$cltv)
+sum(loans$cltv==999)
+# 999: cltv<80 or cltv>200, or cltv<ltv
+loans <- loans[!loans$cltv==999,]
+```
+
+## Original debt-to-income(DTI)
+
+```{r}
+summary(loans$dti)
+sum(loans$dti==999)
+# 999: dti>65
+loans <- loans[!loans$dti==999,]
+```
+
+## Original unpaid principal balance 
+
+```{r}
+summary(loans$orig_upb)
+```
+
+## Original loan-to-value(LTV)
+
+```{r}
+summary(loans$ltv)
+sum(loans$ltv==999)
+# 999: ltv<6 or ltv>105
+loans <- loans[!loans$ltv==999,]
+```
+
+## Original interest rate
+
+```{r}
+summary(loans$int_rt)
+```
+
+## Histograms of Numeric Variables
+
+```{r, message=FALSE}
+fig1 <- qplot(loans$fico, xlab = 'Distribution of Credit Score')
+fig2 <- qplot(loans$cltv, xlab = 'Distribution of CLTV')
+fig3 <- qplot(loans$dti, xlab = 'Distribution of DTI')
+fig4 <- qplot(loans$orig_upb, xlab = 'Distribution of Original UPB')
+fig5 <- qplot(loans$ltv, xlab = 'Distribution of LTV')
+fig6 <- qplot(loans$int_rt, xlab = 'Distribution of Interest Rate')
+
+ggarrange(fig1, fig2, fig3, fig4, fig5, fig6, ncol = 3, nrow = 2) 
+```
+
+## Box plots 
+
+```{r}
+fig1 <- qplot(factor(delq), fico, data=loans, geom='boxplot') + labs(x='Delinquency', y='FICO')
+fig2 <- qplot(x=factor(delq), y=cltv, data=loans, geom='boxplot', xlab = 'Delinquency', ylab = 'CLTV')
+fig3 <- qplot(x=factor(delq), y=dti, data=loans, geom='boxplot', xlab = 'Delinquency', ylab = 'DTI') 
+fig4 <- qplot(x=factor(delq), y=orig_upb, data=loans, geom='boxplot', xlab = 'Delinquency', ylab = 'Original UPB') 
+fig5 <- qplot(x=factor(delq), y=ltv, data=loans, geom='boxplot', xlab = 'Delinquency', ylab = 'LTV') 
+fig6 <- qplot(x=factor(delq), y=int_rt, data=loans, geom='boxplot', xlab = 'Delinquency', ylab = 'Interest Rate') 
+
+ggarrange(fig1, fig2, fig3, fig4, fig5, fig6, ncol = 3, nrow = 2) 
+```
+
+Next, we'll explore categorical variables.
+
+## First time homebuyer flag
+
+```{r, message=FALSE}
+sum(loans$flag_fthb=='')
+table(loans$flag_fthb)
+# '9' should be considered
+```
+
+```{r, message=FALSE}
+delq_fthb <- loans %>%
+  group_by(flag_fthb) %>%
+  summarise(delq_pct=mean(delq))
+delq_fthb
+```
+
+## Metropolitan statistical area or metropolitan division
+
+```{r}
+length(unique(loans$cd_msa))
+sum(loans$cd_msa=='')
+mean(loans$cd_msa=='')
+loans[loans$cd_msa=='',]$cd_msa = 0 # transform space to 0
+```
+
+```{r, message=FALSE}
+# different area
+metro_count <- loans %>%
+    group_by(cd_msa) %>%
+    count() %>%
+    arrange(desc(n)) 
+head(metro_count)
+
+delq_metro <- loans %>%
+    group_by(cd_msa) %>%
+    summarize(delq_pct=mean(delq)) %>%
+    arrange(desc(delq_pct))
+head(delq_metro)
+
+# metro vs no-metro
+delq_is_metro <- loans %>%
+    mutate(is_metro = (loans$cd_msa!='0')) %>%
+    group_by(is_metro) %>%
+    summarize(delq_pct=mean(delq))
+delq_is_metro
+```
+
+## Number of units
+
+```{r, message=FALSE}
+table(loans$cnt_units)
+# should use one-hot encoding
+
+delq_unit <- loans %>%
+  group_by(cnt_units) %>%
+  summarise(delq_pct=mean(delq))
+delq_unit
+```
+
+## Occupancy status
+
+```{r, message=FALSE}
+table(loans$occpy_sts)
+# P = Primary residence, I = Investment property, S = Second home
+# one-hot
+
+delq_occpy <- loans %>%
+  group_by(occpy_sts) %>%
+  summarise(delq_pct=mean(delq))
+delq_occpy
+```
+
+## Channel
+
+```{r, message=FALSE}
+table(loans$channel)
+# Broker / Correspondent / Retail / TPO not specified
+# one-hot
+
+# T should be deleted
+loans <- loans[!loans$channel=='T',]
+```
+
+```{r, message=FALSE}
+delq_chnl <- loans %>%
+  group_by(channel) %>%
+  summarise(delq_pct=mean(delq))
+delq_chnl
+```
+
+## Prepayment penalty mortgage(PPM) flag
+
+```{r, message=FALSE}
+table(loans$ppmt_pnlty) # Space means Y = PPM.
+loans[loans$ppmt_pnlty=='',]$ppmt_pnlty = "Y"
+# one-hot
+```
+
+```{r,message=FALSE}
+delq_ppm <- loans %>%
+  group_by(ppmt_pnlty) %>%
+  summarise(delq_pct=mean(delq))
+delq_ppm
+```
+
+## Loan purpose
+
+```{r, message=FALSE}
+table(loans$loan_purpose)
+# Cash-out refinance / No cash-out refinance / Purchase
+# one-hot
+
+delq_purpose <- loans %>%
+  group_by(loan_purpose) %>%
+  summarise(delq_pct=mean(delq))
+delq_purpose
+```
+
+## Number of borrowers
+
+```{r, message=FALSE}
+table(factor(loans$cnt_borr))
+
+delq_borr <- loans %>%
+  group_by(cnt_borr) %>%
+  summarise(delq_pct=mean(delq))
+delq_borr
+```
+
+## Super conforming flag
+
+```{r, message=FALSE}
+table(loans$flag_sc)
+# Space = Not super conforming
+loans[loans$flag_sc=='',]$flag_sc = "N"
+```
+
+```{r, message=FALSE}
+delq_sc <- loans %>%
+  group_by(flag_sc) %>%
+  summarise(delq_pct=mean(delq))
+delq_sc
+```
+
+## Bar plots
+
+```{r}
+fig1 <- ggplot(delq_fthb,aes(flag_fthb, delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'First Time Homebuyer Flag', y = 'Delinquency Ratio')
+fig2 <- ggplot(delq_is_metro,aes(is_metro, delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'Metropolitan', y = 'Delinquency Ratio')
+fig3 <- ggplot(delq_unit,aes(cnt_units, delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'Number of Units', y = 'Delinquency Ratio')
+fig4 <- ggplot(delq_occpy,aes(occpy_sts, delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'Occupancy Status', y = 'Delinquency Ratio')
+fig5 <- ggplot(delq_chnl,aes(channel, delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'Channel', y = 'Delinquency Ratio')
+fig6 <- ggplot(delq_ppm,aes(ppmt_pnlty, delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'Prepayment Penalty Mortgage Flag', y = 'Delinquency Ratio')
+fig7 <- ggplot(delq_purpose,aes(loan_purpose, delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'Loan Purpose', y = 'Delinquency Ratio')
+fig8 <- ggplot(delq_borr,aes(factor(cnt_borr), delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'Number of Borrowers', y = 'Delinquency Ratio')
+fig9 <- ggplot(delq_sc,aes(flag_sc, delq_pct)) + geom_bar(stat = "identity") +
+  labs(x = 'Super Conforming Flag', y = 'Delinquency Ratio')
+
+ggarrange(fig1, fig2, fig3, fig4, fig5, fig6, ncol = 3, nrow = 2)
+```
+```{r}
+ggarrange(fig7, fig8, fig9, ncol = 3, nrow = 2)
+```
+
+## Property state
+
+```{r}
+table(loans$st)
+# Nation and state? EDA
+# one-hot
+```
+
+```{r, message=FALSE}
+loans %>%
+  filter(st == 'CA') %>%
+  group_by(dt_first_pi) %>%
+  summarise(statedelq=mean(delq)) %>%
+  ggplot(aes(dt_first_pi, statedelq)) +
+  geom_line()
+
+loans %>%
+  filter(st == 'NY') %>%
+  group_by(dt_first_pi) %>%
+  summarise(statedelq=mean(delq)) %>%
+  ggplot(aes(dt_first_pi, statedelq)) +
+  geom_line()
+```
+
+```{r, message=FALSE}
+loans %>%
+    group_by(st) %>%
+    count() %>%
+    arrange(desc(n))
+
+delq_state <- loans %>%
+    group_by(st) %>%
+    summarize(delq_pct=mean(delq)) %>%
+    arrange(desc(delq_pct)) 
+
+head(delq_state, 10)
+
+ggplot(delq_state,aes(reorder(st, delq_pct), delq_pct))+
+  geom_bar(stat = "identity") + 
+  coord_flip() + 
+  labs(x = 'State', y = 'The Ratio of Delinquency') +
+  theme(axis.text.y = element_text(size = 6))
+```
+
+## Seller name
+
+```{r}
+qplot(fct_rev(fct_infreq(loans$seller_name)), geom = "bar", xlab = 'Seller Name') + coord_flip()
+```
+
+```{r, message=FALSE}
+delq_seller <- loans %>%
+    group_by(seller_name) %>%
+    summarize(delq_pct=mean(delq)) %>%
+    arrange(desc(delq_pct)) 
+
+head(delq_seller, 10)
+
+ggplot(delq_seller,aes(reorder(seller_name,delq_pct), delq_pct))+
+  geom_bar(stat = "identity") + 
+  labs(x = 'Seller Name', y = 'The Ratio of Delinquency') +
+  coord_flip()
+```
+
+## Servicer name
+
+```{r}
+qplot(fct_rev(fct_infreq(loans$servicer_name)), geom = "bar", xlab = 'Servicer Name') + coord_flip()
+```
+
+```{r, message=FALSE}
+delq_servicer <- loans %>%
+    group_by(servicer_name) %>%
+    summarize(delq_pct=mean(delq)) %>%
+    arrange(desc(delq_pct)) 
+
+head(delq_servicer, 10)
+
+ggplot(delq_servicer,aes(reorder(servicer_name,delq_pct), delq_pct))+
+  geom_bar(stat = "identity") + 
+  labs(x = 'Servicer Name', y = 'The Ratio of Delinquency') +
+  coord_flip()
+```
+
+## Date Feature
+
+```{r}
+loans$dt_month <- as.character(month(loans$dt_first_pi))
+```
+
+# Analysis and Feature Engineering
+
+## Create a correlation matrix for numeric variables
+
+```{r}
+num_vars <- c("delq","fico","mi_pct","cnt_units","cltv","dti","orig_upb","ltv","int_rt","cnt_borr")
+correlationMatrix <- cor(loans[num_vars])
+print(correlationMatrix)
+```
+
+```{r}
+corrplot.mixed(correlationMatrix, lower = "color", upper = "number", tl.pos = "lt", diag = "l", tl.col = "black")
+```
+
+```{r}
+qplot(ltv, cltv, data = loans, xlab = 'LTV', ylab = 'CLTV')
+qplot(ltv, mi_pct, data = loans, xlab = 'LTV', ylab = 'MI%')
+```
+
+LTV should be deleted.
+
+```{r}
+# delete useless columns
+loans <- loans[,!colnames(loans) %in% c("dt_first_pi","dt_matr","zipcode","id_loan","program_ind","delq_sts", "ltv")]
+```
+
+## Create new data using rose/smote
+
+```{r}
+loans <- loans[!loans$st=='PR',] 
+# very little data from this state and no delinquency record.
+# if create dummy variable for it, all rows will be 0. It makes no sense.
+
+cat_vars <- c("flag_fthb","cd_msa","occpy_sts","channel","ppmt_pnlty","st","loan_purpose",
+              "seller_name","servicer_name","flag_sc","dt_month","delq")
+loans[,cat_vars] <- lapply(loans[,cat_vars], as.factor)
+
+table(loans$delq)
+set.seed(233)
+newdata <- SMOTE(delq ~ ., data = loans, perc.over = 43000, perc.under=100) ###
+table(newdata$delq)
+```
+
+## Create dummy variables for logistic regression
+
+```{r}
+# transform to a binary variable
+newdata$mi_pct <- as.integer(newdata$mi_pct > 0) #??
+newdata$cd_msa <- as.integer(newdata$cd_msa!='0')
+newdata$ppmt_pnlty <- as.integer(newdata$ppmt_pnlty=='Y')
+newdata$flag_sc <- as.integer(newdata$flag_sc == 'Y')
+
+# create dummy variable
+cat_vars <- c("flag_fthb","occpy_sts","channel","loan_purpose","seller_name", "servicer_name", "dt_month")
+newdata <- dummy_cols(newdata, select_columns = cat_vars, remove_first_dummy = TRUE, remove_selected_columns = TRUE)
+newdata <- dummy_cols(newdata, select_columns = "st", remove_first_dummy = FALSE, remove_selected_columns = TRUE)
+```
+
+# Modeling
+
+```{r}
+# split data into train and test sets
+set.seed(233)
+split = sample.split(newdata$delq, SplitRatio = .8)
+train = subset(newdata, split == TRUE)
+test  = subset(newdata, split == FALSE)
+# delete space in column names
+names(train) <- make.names(names(train)) 
+names(test) <- make.names(names(test))
+```
+
+## Logistic Regression
+
+```{r}
+train$delq <- as.numeric(as.character(train$delq))
+test$delq <- as.numeric(as.character(test$delq))
+set.seed(233)
+logit <- glm(delq ~ ., data = train)
+# summary(logit)
+```
+
+```{r}
+set.seed(233)
+prob <- predict(logit, test)
+logit_pred <- factor(prob > .5, levels = c(FALSE, TRUE), labels = c(0, 1))
+logit_pref <- table(test$delq, logit_pred, dnn = c("Actual", "Predicted"))
+logit_pref
+```
+
+```{r}
+ks_table(as.numeric(logit_pred),test[,12]) %>% summarise(ks = max(ks))
+```
+
+```{r}
+# VIF for numeric variables
+num_vars <- c("delq","fico","mi_pct","cnt_units","cltv","dti","orig_upb","int_rt","cnt_borr")
+train2 <- train[num_vars]
+train2$delq <- as.integer(train2$delq)
+vif(glm(delq ~ ., data = train2))
+```
+
+```{r, results='hide'}
+logit_reduced <- step(logit) # too slow
+```
+```{r}
+# summary(logit_reduced)
+```
+
+```{r}
+prob <- predict(logit_reduced, test)
+logit_reduced_pred <- factor(prob > .5, levels = c(FALSE, TRUE), labels = c(0, 1))
+logit_reduced_pref <- table(test$delq, logit_reduced_pred, dnn = c("Actual", "Predicted"))
+logit_reduced_pref
+```
+
+```{r}
+performance <- function(table, n=2) {
+  tn = table[1,1]
+  fp = table[1,2]
+  fn = table[2,1]
+  tp = table[2,2]
+  sensitivity = tp/(tp+fn)
+  specificity = tn/(tn+fp)
+  ppp = tp/(tp+fp)
+  npp = tn/(tn+fn)
+  accuracy = (tp+tn)/(tp+tn+fp+fn)
+  result <- paste("Sensitivity = ", round(sensitivity, n),
+                  "\nSpecificity = ", round(specificity, n),
+                  "\nPositive Predictive Value = ", round(ppp, n),
+                  "\nNegative Predictive Value = ", round(npp, n),
+                  "\nAccuracy = ", round(accuracy, n), "\n", sep = "")
+  cat(result)
+}
+```
+
+```{r}
+performance(logit_pref)
+performance(logit_reduced_pref)
+```
+
+```{r}
+ks_table(as.numeric(logit_reduced_pred),test[,12]) %>% summarise(ks = max(ks))
+```
+
+## Decision Tree
+
+### Use rpart
+```{r}
+set.seed(233)
+train$delq <- as.factor(train$delq)
+test$delq <- as.factor(test$delq)
+tree <- rpart(delq ~ ., data = train, method = 'class')
+tree$cptable
+plotcp(tree)
+```
+
+```{r}
+rpart.plot(tree)
+tree_pruned <- prune(tree, cp=.01066713)
+rpart.plot(tree_pruned) 
+```
+
+```{r}
+tree_pred <- predict(tree_pruned, test[,-12], type = "class")
+tree_pref <- table(test[,12], tree_pred, dnn = c("Actual", "Predicted"))
+tree_pref
+```
+
+```{r}
+performance(tree_pref)
+```
+```{r}
+ks_table(as.numeric(tree_pred),test[,12]) %>% summarise(ks = max(ks))
+```
+
+### Use ctree
+
+```{r}
+set.seed(233)
+ctree <- ctree(delq ~ ., data = train)
+```
+
+```{r}
+ctree_pred <- predict(ctree, test[,-12])
+ctree_pref <- table(test[,12], ctree_pred, dnn = c("Actual", "Predicted"))
+ctree_pref
+```
+
+```{r}
+performance(ctree_pref)
+```
+
+```{r}
+ks_table(as.numeric(ctree_pred),test[,12]) %>% summarise(ks = max(ks))
+```
+
+## Random Forest
+
+```{r}
+set.seed(233)
+forest <- randomForest(delq ~ ., data = train, importance = TRUE)
+forest
+```
+
+```{r, out.width='70%', fig.align='center'}
+# importance(forest, type = 2)
+varImpPlot(forest, type = 2, n.var = 20)
+```
+
+```{r}
+forest_pred <- predict(forest, test, type = "class")
+forest_pref <- table(test$delq, forest_pred, dnn = c("Actual", "Predicted"))
+forest_pref
+```
+
+```{r}
+ks_table(as.numeric(forest_pred),test[,12]) %>% summarise(ks = max(ks))
+```
+
+```{r}
+performance(forest_pref, n=3)
+```
+
+## SVM
+
+```{r}
+svm <- svm(delq ~ ., data = train) # very slow
+svm
+```
+
+```{r}
+set.seed(233)
+svm_pred <- predict(svm, test)
+svm_pref <- table(test$delq, svm_pred, dnn = c("Actual", "Predicted"))
+svm_pref
+```
+
+```{r}
+performance(svm_pref,3)
+```
+
+```{r}
+ks_table(as.numeric(svm_pred),test[,12]) %>% summarise(ks = max(ks))
+```
+
+```{r}
+# set.seed(233)
+# tuned <- tune.svm(delq ~ ., data = train, gamma = 10^(-2:2), cost = 10^(-2:2))
+# tuned 
+## too slow and Rstudio always breaks when running these codes. My computer cannot do it
+```
+
+# Import and preprocess 2019 data (test set)
+
+```{r, warning=FALSE, message=FALSE}
+setwd("/Users/cleardog/BA/MGMT 6962 Data Analytics/Project/Data/")
+
+q1_2019_orig <- list.files(path=getwd(), pattern=c("historical_data1_Q12019",".txt"), full.names=F)
+q2_2019_orig <- list.files(path=getwd(), pattern=c("historical_data1_Q22019",".txt"), full.names=F)
+readfile_orig <- function(filenm){read.table(filenm,sep="|", header=FALSE, colClasses=origclass)}
+q1_2019_orig <- do.call("rbind", lapply(q1_2019_orig,readfile_orig))
+q2_2019_orig <- do.call("rbind", lapply(q2_2019_orig,readfile_orig))
+names(q1_2019_orig) <- orignames
+names(q2_2019_orig) <- orignames
+
+q1_2019_svcg <- list.files(path=getwd(), pattern=c("historical_data1_time_Q12019",".txt"), full.names=F)
+q2_2019_svcg <- list.files(path=getwd(), pattern=c("historical_data1_time_Q22019",".txt"), full.names=F)
+readfile_svcg <- function(filenm){read.table(filenm,sep="|", header=FALSE, colClasses=svcgclass)}
+q1_2019_svcg <- do.call("rbind", lapply(q1_2019_svcg,readfile_svcg))
+q2_2019_svcg <- do.call("rbind", lapply(q2_2019_svcg,readfile_svcg))
+names(q1_2019_svcg) <- svcgnames
+names(q2_2019_svcg) <- svcgnames
+
+orig2 <- rbind(q1_2019_orig, q2_2019_orig)
+svcg2 <- rbind(q1_2019_svcg, q2_2019_svcg)
+delq2 <- svcg2[, which(colnames(svcg2) %in% c('id_loan','delq_sts'))]
+rm(q1_2019_orig)
+rm(q2_2019_orig)
+rm(q1_2019_svcg)
+rm(q2_2019_svcg)
+rm(svcg2)
+```
+
+```{r}
+# table(as.numeric(as.numeric(delq2$delq_sts) > 2)) 
+# 0: 5107212 1: 1626
+set.seed(100)
+all_loans <- orig2 %>%
+  left_join(delq2, by = "id_loan")
+
+# select about 1000+ loans not in delinquency  
+loans_0 <- all_loans %>%
+  filter(as.numeric(delq_sts) <= 2) %>%
+  sample_frac(0.0002, replace = FALSE)
+loans_1 <- all_loans%>% filter(as.numeric(delq_sts) > 2)
+loans_test <- rbind(loans_0, loans_1)
+
+loans_test <- filter(loans_test, orig_loan_term==360 & prop_type=='SF' & prod_type=='FRM')
+loans_test <- loans_test[,!colnames(loans_test) %in% c("orig_loan_term","prop_type", "prod_type","dt_matr","zipcode","id_loan","program_ind", "ltv")]
+loans_test$dt_first_pi <- as.Date(as.yearmon(as.character(loans_test$dt_first_pi), "%Y%m"))
+
+# check_na <- as.data.frame(sapply(loans_test, function(x) sum(is.na(x))))
+# colnames(check_na) <- c("count")
+# arrange(check_na, desc(check_na$count))
+# No null value
+
+loans_test <- filter(loans_test, dt_first_pi>='2019-03-01', dt_first_pi<='2019-08-01')
+loans_test <- loans_test[loans_test$delq_sts!='R',]
+loans_test$delq <- as.numeric(as.numeric(loans_test$delq_sts) > 2)
+loans_test <- loans_test[!loans_test$fico==9999,]
+loans_test <- loans_test[!loans_test$mi_pct==999,]
+loans_test <- loans_test[!loans_test$cltv==999,]
+loans_test <- loans_test[!loans_test$dti==999,]
+loans_test[loans_test$cd_msa=='',]$cd_msa = 0
+# loans_test <- loans_test[!loans_test$channel=='T',] 
+loans_test[loans_test$ppmt_pnlty=='',]$ppmt_pnlty = "Y"
+loans_test[loans_test$flag_sc=='',]$flag_sc = "N"
+loans_test$dt_month <- as.character(month(loans_test$dt_first_pi))
+loans_test <- loans_test[,!colnames(loans_test) %in% c("delq_sts","dt_first_pi")]
+loans_test <- loans_test[!loans_test$st=='PR',] 
+
+cat_vars <- c("flag_fthb","cd_msa","occpy_sts","channel","ppmt_pnlty","st","loan_purpose",
+              "seller_name","servicer_name","flag_sc","dt_month","delq")
+#loans[,cat_vars] <- lapply(loans[,cat_vars], as.factor)
+loans_test$mi_pct <- as.integer(loans_test$mi_pct > 0)
+loans_test$cd_msa <- as.integer(loans_test$cd_msa!='0')
+loans_test$ppmt_pnlty <- as.integer(loans_test$ppmt_pnlty=='Y')
+loans_test$flag_sc <- as.integer(loans_test$flag_sc == 'Y')
+cat_vars <- c("flag_fthb","occpy_sts","channel","loan_purpose")
+loans_test <- dummy_cols(loans_test, select_columns = cat_vars, remove_first_dummy = TRUE, 
+                         remove_selected_columns = TRUE)
+
+# for seller name, servicer name and month
+seller_cols <- unique(loans$seller_name)[-1]
+servicer_cols <- unique(loans$servicer_name)[-1]
+month_cols <- unique(loans$dt_month)[-4]
+st_cols <- unique(loans$st)
+for (name in seller_cols) {
+  for (i in 1:dim(loans_test)[1]) {
+    if (loans_test[['seller_name']][i] == name) {
+      loans_test[i, str_c('seller_name_', name)] = 1
+    } else {
+      loans_test[i, str_c('seller_name_', name)] = 0
+    }
+  }
+}
+loans_test['seller_name_Other sellers'] = 1-rowSums(loans_test[, 25:53])
+for (name in servicer_cols) {
+  for (i in 1:dim(loans_test)[1]) {
+    if (loans_test[['servicer_name']][i] == name) {
+      loans_test[i, str_c('servicer_name_', name)] = 1
+    } else {
+      loans_test[i, str_c('servicer_name_', name)] = 0
+    }
+  }
+}
+loans_test['servicer_name_Other servicers'] = 1-rowSums(loans_test[, 55:80])
+for (name in month_cols) {
+  for (i in 1:dim(loans_test)[1]) {
+    if (loans_test[['dt_month']][i] == name) {
+      loans_test[i, str_c('dt_month_', name)] = 1
+    } else {
+      loans_test[i, str_c('dt_month_', name)] = 0
+    }
+  }
+}
+for (name in st_cols) {
+  for (i in 1:dim(loans_test)[1]) {
+    if (loans_test[['st']][i] == name) {
+      loans_test[i, str_c('st_', name)] = 1
+    } else {
+      loans_test[i, str_c('st_', name)] = 0
+    }
+  }
+}
+loans_test <- loans_test[,!colnames(loans_test) %in% c("dt_month","seller_name","servicer_name", "st",
+              "seller_name_AMERIHOME MORTGAGE COMPANY, LLC", "servicer_name_AMERIHOME MORTGAGE COMPANY, LLC")]
+names(loans_test) <- make.names(names(loans_test)) 
+
+# classes of new data should match original data (for ctree)
+vars1 <- c("fico","cnt_units","dti","orig_upb","cnt_borr")
+vars2 <- names(loans_test)[21:139]
+loans_test[,vars1] <- lapply(loans_test[,vars1], as.numeric)
+loans_test[,vars2] <- lapply(loans_test[,vars2], as.integer)
+```
+
+# Prediction on the test set
+
+```{r}
+loans_test$delq <- as.numeric(as.character(loans_test$delq))
+prob <- predict(logit_reduced, loans_test)
+logit_reduced_pred <- factor(prob > .5, levels = c(FALSE, TRUE), labels = c(0, 1))
+logit_reduced_pref <- table(loans_test$delq, logit_reduced_pred, dnn = c("Actual", "Predicted"))
+logit_reduced_pref
+performance(logit_reduced_pref)
+```
+
+```{r}
+ks_table(as.numeric(logit_reduced_pred),loans_test[,12]) %>% summarise(ks = max(ks))
+```
+
+```{r}
+loans_test$delq <- as.factor(loans_test$delq)
+tree_pred <- predict(tree_pruned, loans_test[,-12], type = "class")
+tree_pref <- table(loans_test$delq, tree_pred, dnn = c("Actual", "Predicted"))
+tree_pref
+performance(tree_pref)
+```
+
+```{r}
+ks_table(as.numeric(tree_pred),loans_test[,12]) %>% summarise(ks = max(ks))
+```
+
+```{r}
+ctree_pred <- predict(ctree, loans_test[,-12])
+ctree_pref <- table(loans_test$delq, ctree_pred, dnn = c("Actual", "Predicted"))
+ctree_pref
+performance(ctree_pref)
+```
+
+```{r}
+ks_table(as.numeric(ctree_pred),loans_test[,12]) %>% summarise(ks = max(ks))
+```
+
+```{r}
+forest_pred <- predict(forest, loans_test, type = "class")
+forest_pref <- table(loans_test$delq, forest_pred, dnn = c("Actual", "Predicted"))
+forest_pref
+performance(forest_pref)
+```
+
+```{r}
+ks_table(as.numeric(forest_pred),loans_test[,12]) %>% summarise(ks = max(ks))
+```
+
+```{r}
+svm_pred <- predict(svm, loans_test)
+svm_pref <- table(loans_test$delq, svm_pred, dnn = c("Actual", "Predicted"))
+svm_pref
+performance(svm_pref)
+```
+
+```{r}
+ks_table(as.numeric(svm_pred),loans_test[,12]) %>% summarise(ks = max(ks))
+```
+
