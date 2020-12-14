@@ -667,10 +667,8 @@ names(test) <- make.names(names(test))
 ## Logistic Regression
 
 ```{r}
-train$delq <- as.numeric(as.character(train$delq))
-test$delq <- as.numeric(as.character(test$delq))
 set.seed(233)
-logit <- glm(delq ~ ., data = train)
+logit <- glm(delq ~ ., data = train, family = "binomial")
 # summary(logit)
 ```
 
@@ -690,8 +688,7 @@ ks_table(as.numeric(logit_pred),test[,12]) %>% summarise(ks = max(ks))
 # VIF for numeric variables
 num_vars <- c("delq","fico","mi_pct","cnt_units","cltv","dti","orig_upb","int_rt","cnt_borr")
 train2 <- train[num_vars]
-train2$delq <- as.integer(train2$delq)
-vif(glm(delq ~ ., data = train2))
+vif(glm(delq ~ ., data = train2, family = "binomial"))
 ```
 
 ```{r, results='hide'}
@@ -742,8 +739,6 @@ ks_table(as.numeric(logit_reduced_pred),test[,12]) %>% summarise(ks = max(ks))
 ### Use rpart
 ```{r}
 set.seed(233)
-train$delq <- as.factor(train$delq)
-test$delq <- as.factor(test$delq)
 tree <- rpart(delq ~ ., data = train, method = 'class')
 tree$cptable
 plotcp(tree)
@@ -982,7 +977,6 @@ loans_test[,vars2] <- lapply(loans_test[,vars2], as.integer)
 # Prediction on the test set
 
 ```{r}
-loans_test$delq <- as.numeric(as.character(loans_test$delq))
 prob <- predict(logit_reduced, loans_test)
 logit_reduced_pred <- factor(prob > .5, levels = c(FALSE, TRUE), labels = c(0, 1))
 logit_reduced_pref <- table(loans_test$delq, logit_reduced_pred, dnn = c("Actual", "Predicted"))
@@ -995,7 +989,6 @@ ks_table(as.numeric(logit_reduced_pred),loans_test[,12]) %>% summarise(ks = max(
 ```
 
 ```{r}
-loans_test$delq <- as.factor(loans_test$delq)
 tree_pred <- predict(tree_pruned, loans_test[,-12], type = "class")
 tree_pref <- table(loans_test$delq, tree_pred, dnn = c("Actual", "Predicted"))
 tree_pref
