@@ -1,0 +1,542 @@
+---
+title: "Cross Validation"
+author: "Zimu Lyu"
+output: html_document
+---
+
+# cv1
+
+```{r}
+library(cvTools)
+library(robustbase)
+data(coleman)
+
+call <- call("lmrob", formula = Y ~ .)
+folds <- cvFolds(nrow(coleman), K = 5, R = 10) # 5-folds
+cvTool(call, data = coleman, y = coleman$Y, cost = rtmspe, folds = folds, costArgs = list(trim = 0.1))
+```
+
+```{r}
+tuning <- list(tuning.psi=seq(2., 6., 20))
+cvFitsLmrob <- cvTuning(call, data = coleman, y = coleman$Y, tuning = tuning, cost = rtmspe, 
+                        folds = folds, costArgs = list(trim = 0.1))
+cvFitsLmrob
+aggregate(cvFitsLmrob, summary)
+```
+
+# cv2
+
+```{r}
+library(MASS)
+data(mammals)
+
+mammals.glm <- glm(log(brain) ~ log(body), data = mammals)
+(cv.err <- cv.glm(mammals, mammals.glm)$delta) # leave-one-out
+(cv.err.6 <- cv.glm(mammals, mammals.glm, K = 6)$delta) # 6-folds, error is smaller.
+```
+
+```{r}
+muhat <- fitted(mammals.glm)
+mammals.diag <- glm.diag(mammals.glm)
+(cv.esterr <- mean((mammals.glm$y - muhat)^2/(1 - mammals.diag$h)^2))
+```
+
+```{r}
+library(boot)
+data(nodal)
+
+cost <- function(r, pi = 0) mean(abs(r-pi) > 0.5)
+
+nodal.glm <- glm(r ~ stage+xray+acid, binomial, data = nodal)
+(cv.err <- cv.glm(nodal, nodal.glm, cost, K = nrow(nodal))$delta) # leave-one-out
+(cv.11.err <- cv.glm(nodal, nodal.glm, cost, K = 11)$delta) # 11-folds
+```
+
+# cv3
+
+```{r}
+# LTS estimators
+set.seed(1234)
+folds <- cvFolds(nrow(coleman), K = 5, R = 10) # 5-folds
+
+## 50% subsets
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5) 
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+## 75% subsets
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75) 
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+## combine
+cvFitsLts <- cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+cvFitsLts # best: 75%
+bwplot(cvFitsLts)
+```
+
+```{r}
+ncv(cvFitLts50)
+#nfits(cvFitLts50) ## NULL
+cvNames(cvFitLts50) <- c("improved", "initial")
+#fits(cvFitLts50) ## NULL
+cvFitLts50
+```
+
+```{r}
+ncv(cvFitsLts)
+nfits(cvFitsLts)
+cvNames(cvFitsLts)
+cvNames(cvFitsLts) <- c("improved", "initial")
+fits(cvFitsLts)
+fits(cvFitsLts) <- 1:2
+cvFitsLts
+```
+
+# cv4
+
+```{r}
+set.seed(4321)
+# same as above
+folds <- cvFolds(nrow(coleman), K = 5, R = 10)
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5)
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75)
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+cvFitsLts <- cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+cvFitsLts
+```
+
+```{r}
+# summary
+aggregate(cvFitLts50, summary)
+aggregate(cvFitsLts, summary) # shows nothing
+```
+
+```{r}
+# MM regression
+tuning <- list(tuning.psi=c(3.14, 3.44, 3.88, 4.68))
+call <- call("lmrob", formula = Y ~ .)
+
+cvFitsLmrob <- cvTuning(call, data = coleman, y = coleman$Y, tuning = tuning, 
+                        cost = rtmspe, folds = folds, costArgs = list(trim = 0.1))
+## M-step did NOT converge
+cvFitsLmrob 
+aggregate(cvFitsLmrob, summary)
+```
+
+# cv5
+
+```{r}
+# compare LS, MM and LTS regression
+folds <- cvFolds(nrow(coleman), K = 5, R = 50)
+
+## LS
+fitLm <- lm(Y ~ ., data = coleman)
+cvFitLm <- cvLm(fitLm, cost = rtmspe, folds = folds, trim = 0.1)
+
+## MM
+fitLmrob <- lmrob(Y ~ ., data = coleman, k.max = 500)
+cvFitLmrob <- cvLmrob(fitLmrob, cost = rtmspe, folds = folds, trim = 0.1)
+
+## LTS 
+fitLts <- ltsReg(Y ~ ., data = coleman)
+cvFitLts <- cvLts(fitLts, cost = rtmspe, folds = folds, trim = 0.1)
+
+## combine
+cvFits <- cvSelect(LS = cvFitLm, MM = cvFitLmrob, LTS = cvFitLts)
+cvFits # Best model: MM
+```
+
+```{r}
+# MM
+bwplot(cvFitLmrob)
+# compare
+bwplot(cvFits)
+```
+
+```{r}
+# LTS estimators
+
+## 50% subsets
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5)
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+## 75% subsets
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75)
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+## combine and bwplot
+cvFitsLts <- cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+cvFitsLts # best: 75%
+bwplot(cvFitsLts)
+```
+
+# cv6
+
+```{r}
+# fit a MM regression model
+fit <- lmrob(Y ~ ., data = coleman)
+cvFit(fit, data = coleman, y = coleman$Y, cost = rtmspe, K = 5, R = 10, 
+      costArgs = list(trim = 0.1), seed = 1234)
+## or put together
+## cvFit(lmrob, formula = Y ~ ., data = coleman, cost = rtmspe, K = 5, R = 10, 
+##       costArgs = list(trim = 0.1), seed = 1234)
+
+# same as above
+call <- call("lmrob", formula = Y ~ .)
+cvFit(call, data = coleman, y = coleman$Y, cost = rtmspe, K = 5, R = 10, 
+      costArgs = list(trim = 0.1), seed = 1234)
+```
+
+# cv7
+
+```{r}
+set.seed(2143) 
+cvFolds(20, K = 5, type = "random")
+cvFolds(20, K = 5, type = "consecutive")
+cvFolds(20, K = 5, type = "interleaved")
+cvFolds(20, K = 5, R = 10)
+```
+
+# cv8
+
+```{r}
+# LTS regression model
+fitLts <- ltsReg(Y ~ ., data = coleman)
+cvFitLts <- cvLts(fitLts, cost = rtmspe, K = 5, R = 10, fit = "both", trim = 0.1, seed = 1234)
+# compare reweighted and raw
+cvFitLts
+cvReshape(cvFitLts)
+```
+
+# cv9
+
+```{r}
+folds <- cvFolds(nrow(coleman), K = 5, R = 10) # 10-folds
+
+# LS
+fitLm <- lm(Y ~ ., data = coleman)
+cvFitLm <- cvLm(fitLm, cost = rtmspe, folds = folds, trim = 0.1)
+
+# MM
+fitLmrob <- lmrob(Y ~ ., data = coleman)
+cvFitLmrob <- cvLmrob(fitLmrob, cost = rtmspe, folds = folds, trim = 0.1)
+
+# LTS
+fitLts <- ltsReg(Y ~ ., data = coleman)
+cvFitLts <- cvLts(fitLts, cost = rtmspe, folds = folds, trim = 0.1)
+
+# compare
+cvSelect(LS = cvFitLm, MM = cvFitLmrob, LTS = cvFitLts)
+```
+
+```{r}
+# LTS estimators 
+
+# 50% subsets
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5)
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+# 75% subsets
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75)
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+# combine
+cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+```
+
+# cv10
+
+```{r}
+# MM, 85% and 95% efficiency
+tuning <- list(tuning.psi = c(3.443689, 4.685061))
+
+## function
+cvTuning(lmrob, formula = Y ~ ., data = coleman, tuning = tuning, cost = rtmspe, 
+         K = 5, R = 10, costArgs = list(trim = 0.1), seed = 1234)
+
+## or call
+call <- call("lmrob", formula = Y ~ .)
+cvTuning(call, data = coleman, y = coleman$Y, tuning = tuning, cost = rtmspe, 
+         K = 5, R = 10, costArgs = list(trim = 0.1), seed = 1234)
+```
+
+# cv11
+
+```{r}
+set.seed(1234)
+call <- call("lmrob", formula = Y ~ .) # MM
+folds <- cvFolds(nrow(coleman), K = 5, R = 10)
+cvTool(call, data = coleman, y = coleman$Y, cost = rtmspe, folds = folds, costArgs = list(trim = 0.1))
+```
+
+# cv12
+
+```{r}
+set.seed(1234) 
+folds <- cvFolds(nrow(coleman), K = 5, R = 50)
+
+# LS
+fitLm <- lm(Y ~ ., data = coleman)
+cvFitLm <- cvLm(fitLm, cost = rtmspe, folds = folds, trim = 0.1)
+
+# MM
+fitLmrob <- lmrob(Y ~ ., data = coleman, k.max = 500)
+cvFitLmrob <- cvLmrob(fitLmrob, cost = rtmspe, folds = folds, trim = 0.1)
+
+# LTS
+fitLts <- ltsReg(Y ~ ., data = coleman)
+cvFitLts <- cvLts(fitLts, cost = rtmspe, folds = folds, trim = 0.1)
+
+# combine
+cvFits <- cvSelect(LS = cvFitLm, MM = cvFitLmrob, LTS = cvFitLts)
+cvFits # best: MM
+```
+
+```{r}
+# MM 
+densityplot(cvFitLmrob)
+# combined
+densityplot(cvFits)
+```
+
+```{r}
+# LTS estimators
+
+## 50% subsets
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5)
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+## 75% subsets
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75)
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+## combine and densityplot 
+cvFitsLts <- cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+cvFitsLts
+densityplot(cvFitsLts)
+```
+
+# cv13
+
+```{r}
+set.seed(1234)
+folds <- cvFolds(nrow(coleman), K = 5, R = 10)
+
+# LS
+fitLm <- lm(Y ~ ., data = coleman)
+cvFitLm <- cvLm(fitLm, cost = rtmspe, folds = folds, trim = 0.1)
+
+# MM
+fitLmrob <- lmrob(Y ~ ., data = coleman, k.max = 500)
+cvFitLmrob <- cvLmrob(fitLmrob, cost = rtmspe, folds = folds, trim = 0.1)
+
+# LTS
+fitLts <- ltsReg(Y ~ ., data = coleman)
+cvFitLts <- cvLts(fitLts, cost = rtmspe, folds = folds, trim = 0.1)
+
+# combine and plot
+cvFits <- cvSelect(LS = cvFitLm, MM = cvFitLmrob, LTS = cvFitLts)
+cvFits # MM
+dotplot(cvFits)
+```
+
+```{r}
+# 50% subsets
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5)
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+# 75% subsets
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75)
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+# combine and dotplot
+cvFitsLts <- cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+cvFitsLts
+dotplot(cvFitsLts)
+```
+
+# cv14
+
+```{r}
+set.seed(1234)
+folds <- cvFolds(nrow(coleman), K = 5, R = 50)
+
+# LS
+fitLm <- lm(Y ~ ., data = coleman)
+cvFitLm <- cvLm(fitLm, cost = rtmspe, folds = folds, trim = 0.1)
+
+# MM
+fitLmrob <- lmrob(Y ~ ., data = coleman, k.max = 500)
+cvFitLmrob <- cvLmrob(fitLmrob, cost = rtmspe, folds = folds, trim = 0.1)
+
+# LTS
+fitLts <- ltsReg(Y ~ ., data = coleman)
+cvFitLts <- cvLts(fitLts, cost = rtmspe, folds = folds, trim = 0.1)
+
+# combine
+cvFits <- cvSelect(LS = cvFitLm, MM = cvFitLmrob, LTS = cvFitLts)
+cvFits
+```
+
+```{r}
+# MM
+plot(cvFitLmrob, method = "bw")
+plot(cvFitLmrob, method = "density")
+plot(cvFitLmrob, method = "xy")
+plot(cvFitLmrob, method = "dot")
+
+# combined
+plot(cvFits, method = "bw")
+plot(cvFits, method = "density")
+plot(cvFits, method = "xy")
+plot(cvFits, method = "dot")
+```
+
+```{r}
+# 50% subsets
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5)
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+# 75% subsets
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75)
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+# combine 
+cvFitsLts <- cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+cvFitsLts
+```
+
+```{r}
+plot(cvFitsLts, method = "bw")
+plot(cvFitsLts, method = "density")
+plot(cvFitsLts, method = "xy")
+plot(cvFitsLts, method = "dot")
+```
+
+# cv15
+
+```{r}
+set.seed(1234)
+folds <- cvFolds(nrow(coleman), K = 5, R = 10)
+
+# LS
+fitLm <- lm(Y ~ ., data = coleman)
+repCV(fitLm, cost = rtmspe, folds = folds, trim = 0.1)
+
+# MM
+fitLmrob <- lmrob(Y ~ ., data = coleman)
+repCV(fitLmrob, cost = rtmspe, folds = folds, trim = 0.1)
+
+# LTS
+fitLts <- ltsReg(Y ~ ., data = coleman)
+repCV(fitLts, cost = rtmspe, folds = folds, trim = 0.1)
+repCV(fitLts, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+```
+
+# cv16
+
+```{r}
+set.seed(1234)
+folds <- cvFolds(nrow(coleman), K = 5, R = 10)
+
+# 50% subsets
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5)
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+# 75% subsets
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75)
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+# combine
+cvFitsLts <- cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+cvFitsLts
+```
+
+```{r}
+summary(cvFitLts50)
+summary(cvFitsLts)
+```
+
+```{r}
+# evaluate MM regression models tuned for 80%, 85%, 90% and 95% efficiency
+tuning <- list(tuning.psi=c(3.14, 3.44, 3.88, 4.68))
+call <- call("lmrob", formula = Y ~ .)
+cvFitsLmrob <- cvTuning(call, data = coleman, y = coleman$Y, tuning = tuning, 
+                        cost = rtmspe, folds = folds, costArgs = list(trim = 0.1))
+cvFitsLmrob
+```
+
+```{r}
+summary(cvFitsLmrob)
+```
+
+# cv17
+
+```{r}
+set.seed(1234) 
+folds <- cvFolds(nrow(coleman), K = 5, R = 10)
+
+# LS
+fitLm <- lm(Y ~ ., data = coleman)
+cvFitLm <- cvLm(fitLm, cost = rtmspe, folds = folds, trim = 0.1)
+
+# MM
+fitLmrob <- lmrob(Y ~ ., data = coleman, k.max = 500)
+cvFitLmrob <- cvLmrob(fitLmrob, cost = rtmspe,folds = folds, trim = 0.1)
+
+# LTS
+fitLts <- ltsReg(Y ~ ., data = coleman)
+cvFitLts <- cvLts(fitLts, cost = rtmspe,folds = folds, trim = 0.1)
+
+# combine and xyplot
+cvFits <- cvSelect(LS = cvFitLm, MM = cvFitLmrob, LTS = cvFitLts)
+cvFits
+xyplot(cvFits)
+```
+
+```{r}
+# 50% subsets
+fitLts50 <- ltsReg(Y ~ ., data = coleman, alpha = 0.5)
+cvFitLts50 <- cvLts(fitLts50, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+# 75% subsets
+fitLts75 <- ltsReg(Y ~ ., data = coleman, alpha = 0.75)
+cvFitLts75 <- cvLts(fitLts75, cost = rtmspe, folds = folds, fit = "both", trim = 0.1)
+
+# combine and xyplot
+cvFitsLts <- cvSelect("0.5" = cvFitLts50, "0.75" = cvFitLts75)
+cvFitsLts
+xyplot(cvFitsLts)
+```
+
+```{r}
+# evaluate MM regression models tuned for 80%, 85%, 90% and 95% efficiency
+tuning <- list(tuning.psi=c(3.14, 3.44, 3.88, 4.68))
+cvFitsLmrob <- cvTuning(fitLmrob$call, data = coleman, y = coleman$Y, tuning = tuning, 
+                        cost = rtmspe, folds = folds, costArgs = list(trim = 0.1))
+# result
+cvFitsLmrob
+xyplot(cvFitsLmrob)
+```
+
+# cv18
+
+```{r}
+require(boot)
+data(mammals, package="MASS")
+mammals.glm <- glm(log(brain) ~ log(body), data = mammals)
+(cv.err <- cv.glm(mammals, mammals.glm)$delta) # leave-one-out
+(cv.err.6 <- cv.glm(mammals, mammals.glm, K = 6)$delta) # 6-folds
+```
+
+```{r}
+muhat <- fitted(mammals.glm)
+mammals.diag <- glm.diag(mammals.glm)
+(cv.err <- mean((mammals.glm$y - muhat)^2/(1 - mammals.diag$h)^2))
+```
+
+```{r}
+cost <- function(r, pi = 0) mean(abs(r-pi) > 0.5)
+nodal.glm <- glm(r ~ stage+xray+acid, binomial, data = nodal)
+(cv.err <- cv.glm(nodal, nodal.glm, cost, K = nrow(nodal))$delta) # leave-one-out
+(cv.11.err <- cv.glm(nodal, nodal.glm, cost, K = 11)$delta) # 11-folds
+```
+
