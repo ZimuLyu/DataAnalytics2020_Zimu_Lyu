@@ -513,22 +513,6 @@ table(loans$st)
 
 ```{r, message=FALSE}
 loans %>%
-  filter(st == 'CA') %>%
-  group_by(dt_first_pi) %>%
-  summarise(statedelq=mean(delq)) %>%
-  ggplot(aes(dt_first_pi, statedelq)) +
-  geom_line()
-
-loans %>%
-  filter(st == 'NY') %>%
-  group_by(dt_first_pi) %>%
-  summarise(statedelq=mean(delq)) %>%
-  ggplot(aes(dt_first_pi, statedelq)) +
-  geom_line()
-```
-
-```{r, message=FALSE}
-loans %>%
     group_by(st) %>%
     count() %>%
     arrange(desc(n))
@@ -640,7 +624,7 @@ table(newdata$delq)
 
 ```{r}
 # transform to a binary variable
-newdata$mi_pct <- as.integer(newdata$mi_pct > 0) #??
+newdata$mi_pct <- as.integer(newdata$mi_pct > 0)
 newdata$cd_msa <- as.integer(newdata$cd_msa!='0')
 newdata$ppmt_pnlty <- as.integer(newdata$ppmt_pnlty=='Y')
 newdata$flag_sc <- as.integer(newdata$flag_sc == 'Y')
@@ -671,22 +655,18 @@ names(test) <- make.names(names(test))
 
 ## Logistic Regression
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 set.seed(233)
 logit <- glm(delq ~ ., data = train, family = "binomial")
 # summary(logit)
 ```
 
-```{r}
+```{r, warning=FALSE, message=FALSE}
 set.seed(233)
 prob <- predict(logit, test)
 logit_pred <- factor(prob > .5, levels = c(FALSE, TRUE), labels = c(0, 1))
 logit_pref <- table(test$delq, logit_pred, dnn = c("Actual", "Predicted"))
 logit_pref
-```
-
-```{r}
-ks_table(as.numeric(logit_pred),test[,12]) %>% summarise(ks = max(ks))
 ```
 
 ```{r}
@@ -696,19 +676,9 @@ train2 <- train[num_vars]
 vif(glm(delq ~ ., data = train2, family = "binomial"))
 ```
 
-```{r, results='hide'}
-logit_reduced <- step(logit, trace=0, steps=200)
-```
-
-```{r}
-# summary(logit_reduced)
-```
-
-```{r}
-prob <- predict(logit_reduced, test)
-logit_reduced_pred <- factor(prob > .5, levels = c(FALSE, TRUE), labels = c(0, 1))
-logit_reduced_pref <- table(test$delq, logit_reduced_pred, dnn = c("Actual", "Predicted"))
-logit_reduced_pref
+```{r, warning=FALSE, message=FALSE}
+# logit_reduced <- step(logit, trace=0, steps=200)
+# cannot run the result, very very slow
 ```
 
 ```{r}
@@ -733,11 +703,10 @@ performance <- function(table, n=2) {
 
 ```{r}
 performance(logit_pref)
-performance(logit_reduced_pref)
 ```
 
 ```{r}
-ks_table(as.numeric(logit_reduced_pred),test[,12]) %>% summarise(ks = max(ks))
+ks_table(as.numeric(logit_pred),test[,12]) %>% summarise(ks = max(ks))
 ```
 
 ## Decision Tree
@@ -820,7 +789,7 @@ performance(forest_pref, n=3)
 ## SVM
 
 ```{r}
-svm <- svm(delq ~ ., data = train) # very slow
+svm <- svm(delq ~ ., data = train)
 svm
 ```
 
@@ -832,7 +801,7 @@ svm_pref
 ```
 
 ```{r}
-performance(svm_pref,3)
+performance(svm_pref)
 ```
 
 ```{r}
@@ -972,26 +941,32 @@ for (name in st_cols) {
 loans_test <- loans_test[,!colnames(loans_test) %in% c("dt_month","seller_name","servicer_name", "st",
               "seller_name_AMERIHOME MORTGAGE COMPANY, LLC", "servicer_name_AMERIHOME MORTGAGE COMPANY, LLC")]
 names(loans_test) <- make.names(names(loans_test)) 
+```
 
+```{r}
 # classes of new data should match original data (for ctree)
 vars1 <- c("fico","cnt_units","dti","orig_upb","cnt_borr")
-vars2 <- names(loans_test)[21:139]
+vars2 <- c("cd_msa","mi_pct","ppmt_pnlty","flag_sc")
+vars3 <- names(loans_test)[12:139]
 loans_test[,vars1] <- lapply(loans_test[,vars1], as.numeric)
-loans_test[,vars2] <- lapply(loans_test[,vars2], as.integer)
+loans_test[,vars2] <- lapply(loans_test[,vars2], as.factor)
+for (var in vars3) {
+  loans_test[,var] <- factor(loans_test[,var], levels = c("0","1"))
+}
 ```
 
 # Prediction on the test set
 
 ```{r}
-prob <- predict(logit_reduced, loans_test)
-logit_reduced_pred <- factor(prob > .5, levels = c(FALSE, TRUE), labels = c(0, 1))
-logit_reduced_pref <- table(loans_test$delq, logit_reduced_pred, dnn = c("Actual", "Predicted"))
-logit_reduced_pref
-performance(logit_reduced_pref)
+prob <- predict(logit, loans_test)
+logit_pred <- factor(prob > .5, levels = c(FALSE, TRUE), labels = c(0, 1))
+logit_pref <- table(loans_test$delq, logit_pred, dnn = c("Actual", "Predicted"))
+logit_pref
+performance(logit_pref)
 ```
 
 ```{r}
-ks_table(as.numeric(logit_reduced_pred),loans_test[,12]) %>% summarise(ks = max(ks))
+ks_table(as.numeric(logit_pred),loans_test[,12]) %>% summarise(ks = max(ks))
 ```
 
 ```{r}
@@ -1037,4 +1012,3 @@ performance(svm_pref)
 ```{r}
 ks_table(as.numeric(svm_pred),loans_test[,12]) %>% summarise(ks = max(ks))
 ```
-
