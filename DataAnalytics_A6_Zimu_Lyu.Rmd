@@ -649,6 +649,11 @@ newdata$flag_sc <- as.integer(newdata$flag_sc == 'Y')
 cat_vars <- c("flag_fthb","occpy_sts","channel","loan_purpose","seller_name", "servicer_name", "dt_month")
 newdata <- dummy_cols(newdata, select_columns = cat_vars, remove_first_dummy = TRUE, remove_selected_columns = TRUE)
 newdata <- dummy_cols(newdata, select_columns = "st", remove_first_dummy = FALSE, remove_selected_columns = TRUE)
+
+# convert into factors
+dummy_vars <- names(newdata[,13:139])
+cat_vars <- c("mi_pct","cd_msa","ppmt_pnlty","flag_sc", dummy_vars)
+newdata[,cat_vars] <- lapply(newdata[,cat_vars], as.factor)
 ```
 
 # Modeling
@@ -692,8 +697,9 @@ vif(glm(delq ~ ., data = train2, family = "binomial"))
 ```
 
 ```{r, results='hide'}
-logit_reduced <- step(logit) # too slow
+logit_reduced <- step(logit, trace=0, steps=200)
 ```
+
 ```{r}
 # summary(logit_reduced)
 ```
